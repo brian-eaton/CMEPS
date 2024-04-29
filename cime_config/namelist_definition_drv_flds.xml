@@ -170,4 +170,18 @@
     </desc>
   </entry>
 
+  <!-- ========================================================================================  -->
+  <!-- Gustiness
+  <!-- ========================================================================================  -->
+
+  <entry id="add_gusts">
+    <type>logical</type>
+    <category>aoflux</category>
+    <group>shr_flux_nl</group>
+    <desc>
+      Switch to add a wind gustiness factor in shr_flux_mod to modify winds used to
+      compute surface fluxes.
+    </desc>
+  </entry>
+
 </entry_id>
