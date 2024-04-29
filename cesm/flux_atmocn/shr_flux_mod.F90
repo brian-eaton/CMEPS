@@ -7,6 +7,9 @@ module shr_flux_mod
   use shr_kind_mod, only : R8=>SHR_KIND_R8, IN=>SHR_KIND_IN ! shared kinds
   use shr_const_mod ! shared constants
   use shr_sys_mod   ! shared system routines
+  use shr_log_mod,  only : shr_log_getLogUnit
+
+  use ESMF, only : ESMF_VM, ESMF_VMGetCurrent, ESMF_VMGet, ESMF_VMBroadcast
 
   implicit none
 
@@ -44,6 +47,8 @@ module shr_flux_mod
 
   integer,parameter :: debug = 0 ! internal debug level
 
+  logical :: add_gusts
+
   ! The follow variables are not declared as parameters so that they can be
   ! adjusted to support aquaplanet and potentially other simple model modes.
   ! The flux_adjust_constants subroutine is called to set the desired
@@ -75,6 +80,87 @@ module shr_flux_mod
 
 !===============================================================================
 contains
+!===============================================================================
+
+  subroutine shr_flux_readnl(NLFilename)
+
+    !========================================================================
+    ! reads shr_flux_nl namelist group in drv_flds_in
+    !========================================================================
+
+    ! input/output variables
+    character(len=*), intent(in)  :: NLFilename ! Namelist filename
+
+    !----- local -----
+    type(ESMF_VM)     :: vm
+    integer           :: unitn                  ! namelist unit number
+    integer           :: ierr                   ! error code
+    logical           :: exists                 ! if file exists or not
+    type(ESMF_Logical):: ltmp(1)
+    integer           :: rc
+    integer           :: localpet
+    integer           :: mpicom
+    integer           :: s_logunit
+    character(len=*), parameter :: subname = '(shr_flux_readnl) '
+    ! ------------------------------------------------------------------
+
+    namelist /shr_flux_nl/ add_gusts
+
+    rc = ESMF_SUCCESS
+
+    ltmp(1) = .false.
+
+    !--- Open and read namelist ---
+    if ( len_trim(NLFilename) == 0 ) then
+       call shr_sys_abort( subname//'ERROR: nlfilename not set' )
+    end if
+    call shr_log_getLogUnit(s_logunit)
+    call ESMF_VMGetCurrent(vm, rc=rc)
+    if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+    call ESMF_VMGet(vm, localPet=localpet, mpiCommunicator=mpicom, rc=rc)
+    if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+    if (localpet==0) then
+       ! ------------------------------------------------------------------------
+       ! Set default values in case namelist file doesn't exist, shr_flux_nl group
+       ! doesn't exist within the file, or a given variable isn't present in the namelist
+       ! group in the file.
+       ! ------------------------------------------------------------------------
+       add_gusts = .false.
+
+       ! ------------------------------------------------------------------------
+       ! Read namelist file
+       ! ------------------------------------------------------------------------
+       inquire( file=trim(NLFileName), exist=exists)
+       if ( exists ) then
+          open(newunit=unitn, file=trim(NLFilename), status='old' )
+          write(s_logunit,'(a)') subname,'Read in shr_flux_nl namelist from: ', trim(NLFilename)
+          call shr_nl_find_group_name(unitn, 'shr_flux_nl', ierr)
+          if (ierr == 0) then
+             ! Note that ierr /= 0 means no namelist is present.
+             read(unitn, shr_flux_nl, iostat=ierr)
+             if (ierr > 0) then
+                call shr_sys_abort(subname//'problem reading shr_flux_nl')
+             end if
+          end if
+          close( unitn )
+       end if
+
+       ltmp(1) = add_gusts
+
+    end if
+
+    ! ------------------------------------------------------------------------
+    ! Broadcast values to all tasks
+    ! ------------------------------------------------------------------------
+    call ESMF_VMBroadcast(vm,  ltmp, count=1, rootPet=0, rc=rc)
+    if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+    add_gusts = ltmp(1)
+
+  end subroutine shr_flux_readnl
+
 !===============================================================================
 
   subroutine shr_flux_adjust_constants( &
@@ -141,7 +227,6 @@ contains
        &               evap  ,evap_16O, evap_HDO, evap_18O, &
        &               taux  ,tauy  ,tref  ,qref  ,   &
        &               ocn_surface_flux_scheme, &
-       &               add_gusts, & 
        &               duu10n, & 
        &               ugust_out, &
        &               u10res, & 
@@ -160,7 +245,6 @@ contains
     integer(IN),intent(in) :: nMax        ! data vector length
     integer(IN),intent(in) :: mask (nMax) ! ocn domain mask       0 <=> out of domain
     integer(IN),intent(in) :: ocn_surface_flux_scheme
-    logical ,intent(in)    :: add_gusts
     real(R8)   ,intent(in) :: zbot (nMax) ! atm level height      (m)
     real(R8)   ,intent(in) :: ubot (nMax) ! atm u wind            (m/s)
     real(R8)   ,intent(in) :: vbot (nMax) ! atm v wind            (m/s)

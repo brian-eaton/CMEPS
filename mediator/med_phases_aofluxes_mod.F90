@@ -78,7 +78,6 @@ module med_phases_aofluxes_mod
   logical :: compute_atm_dens
   logical :: compute_atm_thbot
   integer :: ocn_surface_flux_scheme ! use case
-  logical :: add_gusts
 
   character(len=CS), pointer :: fldnames_ocn_in(:)
   character(len=CS), pointer :: fldnames_atm_in(:)
@@ -406,14 +405,6 @@ contains
        write(logunit,'(a)') trim(subname)//' ocn_surface_flux_scheme is '//trim(cvalue)
     end if
 #endif
-
-    call NUOPC_CompAttributeGet(gcomp, name='add_gusts', value=cvalue, isPresent=isPresent, isSet=isSet, rc=rc)
-    if (chkerr(rc,__LINE__,u_FILE_u)) return
-    if (isPresent .and. isSet) then
-       read(cvalue,*) add_gusts
-    else
-       add_gusts = .false.
-    end if
 
     ! bottom level potential temperature and/or botom level density
     ! will need to be computed if not received from the atm
@@ -1074,7 +1065,6 @@ contains
          evap=aoflux_out%evap, evap_16O=aoflux_out%evap_16O, evap_HDO=aoflux_out%evap_HDO, evap_18O=aoflux_out%evap_18O, &
          taux=aoflux_out%taux, tauy=aoflux_out%tauy, tref=aoflux_out%tref, qref=aoflux_out%qref, &
          ocn_surface_flux_scheme=ocn_surface_flux_scheme, &
-         add_gusts=add_gusts, &
          duu10n=aoflux_out%duu10n, & 
          ugust_out = aoflux_out%ugust_out, &
          u10res = aoflux_out%u10res, & 
@@ -1745,13 +1735,6 @@ end subroutine med_aofluxes_map_ogrid2xgrid_input
        allocate(aoflux_out%evap_16O(lsize)); aoflux_out%evap_16O(:) = 0._R8
        allocate(aoflux_out%evap_18O(lsize)); aoflux_out%evap_18O(:) = 0._R8
        allocate(aoflux_out%evap_HDO(lsize)); aoflux_out%evap_HDO(:) = 0._R8
-    end if
-
-    if (add_gusts) then
-       call fldbun_getfldptr(fldbun, 'So_ugustOut', aoflux_out%ugust_out, xgrid=xgrid, rc=rc)
-       if (chkerr(rc,__LINE__,u_FILE_u)) return
-    else
-       allocate(aoflux_out%ugust_out(lsize)); aoflux_out%ugust_out(:) = 0._R8
     end if
 
   end subroutine set_aoflux_out_pointers
